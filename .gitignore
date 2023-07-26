@@ -8,3 +8,5 @@ old_output/
 new_multi_data/
 *.pth
 debug/
+datasets/
+Climbing-*/
