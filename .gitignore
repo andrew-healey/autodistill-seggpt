@@ -1,0 +1,8 @@
+coco-viz/
+output/
+__pycache__/
+.venv/
+coco_output/
+old_coco_output/
+old_output/
+new_multi_data/
