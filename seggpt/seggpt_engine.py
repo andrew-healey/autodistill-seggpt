@@ -25,7 +25,7 @@ class Cache(list):
 
 @torch.no_grad()
 def run_one_image(img, tgt, model, device):
-    print("run_one_image", img.shape,img.sum(),img.std())
+    # print("run_one_image", img.shape,img.sum(),img.std())
     # import pdb; pdb.set_trace()
     x = torch.tensor(img)
     # make it a batch-like
@@ -90,8 +90,8 @@ def inference_image(model, device, img_path, img2_paths, tgt2_paths, out_path):
         image_batch.append(img)
         target_batch.append(tgt)
 
-        cv2.imwrite("debug/img.png",(img*imagenet_std+imagenet_mean)*255)
-        cv2.imwrite("debug/mask.png",(tgt*imagenet_std+imagenet_mean)*255)
+        # cv2.imwrite("debug/img.png",(img*imagenet_std+imagenet_mean)*255)
+        # cv2.imwrite("debug/mask.png",(tgt*imagenet_std+imagenet_mean)*255)
 
     img = np.stack(image_batch, axis=0)
     tgt = np.stack(target_batch, axis=0)

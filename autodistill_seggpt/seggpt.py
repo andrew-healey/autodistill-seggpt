@@ -133,8 +133,8 @@ class SegGPT(DetectionBaseModel):
         mask = self.preprocess(mask)
         mask = self.imagenet_preprocess(mask)
 
-        print("img",img.shape,img.sum(),img.std())
-        print("mask",mask.shape,mask.sum(),mask.std())
+        # print("img",img.shape,img.sum(),img.std())
+        # print("mask",mask.shape,mask.sum(),mask.std())
         
         return img, mask
     
