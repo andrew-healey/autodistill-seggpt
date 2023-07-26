@@ -7,3 +7,4 @@ old_coco_output/
 old_output/
 new_multi_data/
 *.pth
+debug/
