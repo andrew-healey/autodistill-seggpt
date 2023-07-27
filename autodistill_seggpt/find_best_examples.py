@@ -17,6 +17,8 @@ import numpy as np
 
 from tqdm import tqdm
 
+import math
+
 # TODO: make multiple eval metrics. A metric could fit the interface get_score(gt_dataset,pred_dataset)->float,str.
 # The float is the score, the str is a human-readable description of the score (plus some extra metadata like mAP-large, etc.)
 # Metrics could include: mask AP, mask IoU, box AP, etc.
@@ -25,7 +27,7 @@ def find_best_examples(
         ref_dataset:DetectionDataset,
         model_class:Type[DetectionBaseModel],
         num_examples:int=2,
-        num_trials:int=5
+        num_trials:int=10
 ):
     # create few-shot ontologies for each class.
     cls_names = [f"{i}-{cls_name}" for i,cls_name in enumerate(ref_dataset.classes)]
@@ -60,7 +62,10 @@ def find_best_examples(
         sub_combo_hashes = sample(combo_hashes,num_iters)
 
         print(f"Finding best examples for class {cls}.")
+
         combo_pbar = tqdm(sub_combo_hashes)
+        max_score = -math.inf
+
         for combo_hash in combo_pbar:
             image_choices = combo_hash_to_choices(combo_hash,positive_examples,num_examples) 
 
@@ -87,7 +92,9 @@ def find_best_examples(
             score = iou(gt_dataset,pred_dataset).tolist()
 
             examples_scores.append((image_choices,score))
-            combo_pbar.set_description(f"Curr IoU: {round(score,2)}")
+
+            max_score = max(max_score,score)
+            combo_pbar.set_description(f"Best IoU: {round(max_score,2)}")
         
         my_best_examples,best_score = max(examples_scores,key=lambda x:x[1])
         best_examples[cls] = my_best_examples

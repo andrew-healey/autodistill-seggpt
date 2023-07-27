@@ -2,6 +2,8 @@ from math import floor
 from random import random
 import numpy as np
 
+palette_registry = {}
+
 # use color palette
 from palettable.wesanderson import Moonrise7_5
 
@@ -19,10 +21,14 @@ def reset_colors():
   global curr_idx
   curr_idx = 0
 
+palette_registry['moonrise'] = (moonrise_palette,moonrise_rgb,"instance")
+
 # use white
 def white_rgb():
     return np.asarray([255,255,255])
 white_palette = white_rgb()[None,...]
+
+palette_registry['white'] = (white_palette,white_rgb,"semantic")
 
 # use r/g/b
 rgb_palette = np.asarray([[255,0,0],[0,255,0],[0,0,255]])
@@ -32,7 +38,9 @@ def rgb_rgb():
   curr_idx = (curr_idx + 1) % len(rgb_palette)
   return np.asarray(list(ret))
 
+palette_registry['rgb'] = (rgb_palette,rgb_rgb,"instance")
 
 # choose your preset
-next_rgb = rgb_rgb#moonrise_rgb
-palette = rgb_palette#moonrise_palette
+preset = "white"
+
+next_rgb,palette,seg_type = palette_registry[preset]

@@ -26,7 +26,6 @@ imagenet_std = np.array([0.229, 0.224, 0.225])
 ckpt_path = 'seggpt_vit_large.pth'
 device = torch.device("cuda")
 model = "seggpt_vit_large_patch16_input896x448"
-seg_type = "instance"
 
 res, hres = 448, 448
 
@@ -50,7 +49,7 @@ class SegGPT(DetectionBaseModel):
 
     def __init__(self, ontology: FewShotOntology):
         self.ontology = ontology
-        self.model = prepare_model(ckpt_path, model, seg_type).to(self.DEVICE)
+        self.model = prepare_model(ckpt_path, model, colors.seg_type).to(self.DEVICE)
         # print("Model loaded.")
 
     def preprocess(self, img:np.ndarray)->np.ndarray:
