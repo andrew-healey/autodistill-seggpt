@@ -7,63 +7,8 @@ from autodistill.core import Ontology
 from autodistill.detection import DetectionOntology,DetectionBaseModel
 
 from dataclasses import dataclass
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Union
 
-
-
-@dataclass
-class FewShotOntology(Ontology):
-    def __init__(self,
-                 ref_dataset:DetectionDataset,
-
-                 # each tuple in the list has form:
-                 # ( (training_class_name, [reference_image_ids]), output_class_name )]))
-                 # i.e. ( ("1-climbing-holds",["demo-holds-1.jpg","demo-holds-2.jpg"]), "climbing-hold" )
-                 ontology: List[Tuple[
-                        Tuple[str,List[str]],
-                        str
-                     ]]
-        ):
-        self.ref_dataset = ref_dataset
-        self.ontology = ontology
-        rich_ontology = self.enrich_ontology(ontology)
-        self.rich_ontology = rich_ontology
-    
-    def prompts(self)->List[Tuple[str,List[str]]]:
-        return [key for key,val in self.ontology]
-    def rich_prompts(self)->List[List[Tuple[np.ndarray,Detections]]]:
-        return [key for key,val in self.rich_ontology]
-    def classes(self)->List[str]:
-        return [val for key,val in self.ontology]
-    def rich_prompt_to_class(self,rich_prompt:List[Tuple[np.ndarray,Detections]])->str:
-        for key,val in self.rich_ontology:
-            if key == rich_prompt:
-                return val
-        raise Exception("No class found for prompt.")
-
-    # using lists-of-pairs instead of dicts:
-    def enrich_ontology(self, ontology: List[Tuple[
-                        Tuple[str,List[str]],
-                        str
-                        ]]
-        )->List[Tuple[List[Tuple[np.ndarray,Detections]],str]]:
-
-        rich_ontology = []
-
-        for basic_key,val in ontology:
-            cls_name, ref_img_names = basic_key
-
-            cls_names = [f"{i}-{cls_name}" for i,cls_name in enumerate(self.ref_dataset.classes)]
-            cls_id = cls_names.index(cls_name)
-
-            new_key = []
-            for ref_img_name in ref_img_names:
-                detections = self.ref_dataset.annotations[ref_img_name]
-                detections = detections[detections.class_id==cls_id]
-                image = self.ref_dataset.images[ref_img_name]
-                new_key.append((image,detections))
-            rich_ontology.append((new_key,val))
-        return rich_ontology
 
 import torch
 from PIL import Image
@@ -73,6 +18,7 @@ from torch.nn import functional as F
 # SegGPT repo files
 from seggpt.seggpt_engine import run_one_image
 from seggpt.seggpt_inference import prepare_model
+from .few_shot_ontology import FewShotOntology
 
 imagenet_mean = np.array([0.485, 0.456, 0.406])
 imagenet_std = np.array([0.229, 0.224, 0.225])
@@ -88,8 +34,14 @@ res, hres = 448, 448
 from . import colors
 from .postprocessing import quantize, quantized_to_bitmasks, bitmasks_to_detections
 
-
 use_colorings = True
+
+def show_usage():
+    t = torch.cuda.get_device_properties(0).total_memory
+    r = torch.cuda.memory_reserved(0)
+    a = torch.cuda.memory_allocated(0)
+
+    print(f"Total: {t//(10**9)}, Reserved: {r//(10**9)}, Allocated: {a//(10**9)}, Free: {(t-a)//(10**9)}")
 
 class SegGPT(DetectionBaseModel):
 
@@ -99,7 +51,7 @@ class SegGPT(DetectionBaseModel):
     def __init__(self, ontology: FewShotOntology):
         self.ontology = ontology
         self.model = prepare_model(ckpt_path, model, seg_type).to(self.DEVICE)
-        print("Model loaded.")
+        # print("Model loaded.")
 
     def preprocess(self, img:np.ndarray)->np.ndarray:
         img = cv2.resize(img, dsize=(res, hres))
@@ -125,17 +77,11 @@ class SegGPT(DetectionBaseModel):
         for detection in detections:
             curr_rgb = colors.next_rgb()
             det_box,det_mask,*_ = detection
-            # mask += det_mask[...,None] * curr_rgb[None,None,:]
             mask[det_mask] = curr_rgb
-        
-        cv2.imwrite("debug/mask_demo.png",mask)
         
         mask = self.preprocess(mask)
         mask = self.imagenet_preprocess(mask)
 
-        # print("img",img.shape,img.sum(),img.std())
-        # print("mask",mask.shape,mask.sum(),mask.std())
-        
         return img, mask
     
     # Convert a list of reference images into a SegGPT-friendly batch.
@@ -150,12 +96,19 @@ class SegGPT(DetectionBaseModel):
         return imgs,masks
 
 
-    def predict(self,input:str, confidence:int = 0.5) -> sv.Detections:
+    @torch.no_grad()
+    def predict(self,input:Union[str,np.ndarray], confidence:int = 0.5) -> sv.Detections:
         detections = []
         for keyId,ref_imgs in enumerate(self.ontology.rich_prompts()):
             ref_imgs,ref_masks = self.prepare_ref_imgs(ref_imgs)
 
-            image = Image.open(input).convert("RGB")
+            if type(input) == str:
+                if input in self.ontology.ref_dataset.images:
+                    image = Image.fromarray(self.ref_dataset.images[input])
+                image = Image.open(input).convert("RGB")
+            else:
+                image = Image.fromarray(input)
+
             size = image.size
             input_image = np.array(image)
 
@@ -168,6 +121,7 @@ class SegGPT(DetectionBaseModel):
             # SegGPT uses this weird format--it needs images/masks to be in format (N,2H,W,C)--where the first H rows are the reference image, and the next H rows are the input image.
             img = np.concatenate((ref_imgs,img_repeated),axis=1)
             mask = np.concatenate((ref_masks,ref_masks),axis=1)
+            # show_usage()
 
             for i in range(len(img)):
                 cv2.imwrite(f"debug/img_{i}.png",(img[i]*imagenet_std+imagenet_mean)*255)
@@ -198,50 +152,3 @@ class SegGPT(DetectionBaseModel):
         detections = Detections.merge(detections)
         detections = detections[detections.area > 100]
         return detections
-
-    # def predict(self,input:str, confidence:int = 0.5)-> sv.Detections:
-
-    #     image = Image.open(input).convert("RGB")
-    #     input_image = np.array(image)
-    #     size = image.size
-    #     image = np.array(image.resize((res, hres))) / 255.
-
-    #     image_batch, target_batch = [], []
-    #     for img2, tgt2 in zip(img2_paths, tgt2_paths):
-    #         img2 = cv2.resize(img2, dsize=(res, hres))
-    #         img2 /= 255.
-
-    #         tgt2 = Image.open(tgt2_path).convert("RGB")
-    #         tgt2 = tgt2.resize((res, hres), Image.NEAREST)
-    #         tgt2 = np.array(tgt2) / 255.
-
-    #         tgt = tgt2  # tgt is not available
-    #         tgt = np.concatenate((tgt2, tgt), axis=0)
-    #         img = np.concatenate((img2, image), axis=0)
-        
-    #         assert img.shape == (2*res, res, 3), f'{img.shape}'
-    #         # normalize by ImageNet mean and std
-    #         img = img - imagenet_mean
-    #         img = img / imagenet_std
-
-    #         assert tgt.shape == (2*res, res, 3), f'{img.shape}'
-    #         # normalize by ImageNet mean and std
-    #         tgt = tgt - imagenet_mean
-    #         tgt = tgt / imagenet_std
-
-    #         image_batch.append(img)
-    #         target_batch.append(tgt)
-
-    #     img = np.stack(image_batch, axis=0)
-    #     tgt = np.stack(target_batch, axis=0)
-    #     """### Run SegGPT on the image"""
-    #     # make random mask reproducible (comment out to make it change)
-    #     torch.manual_seed(2)
-    #     output = run_one_image(img, tgt, model, device)
-    #     output = F.interpolate(
-    #         output[None, ...].permute(0, 3, 1, 2), 
-    #         size=[size[1], size[0]], 
-    #         mode='nearest',
-    #     ).permute(0, 2, 3, 1)[0].numpy()
-    #     output = Image.fromarray(output.astype(np.uint8))
-    #     output.save(out_path)

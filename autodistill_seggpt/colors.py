@@ -24,6 +24,15 @@ def white_rgb():
     return np.asarray([255,255,255])
 white_palette = white_rgb()[None,...]
 
+# use r/g/b
+rgb_palette = np.asarray([[255,0,0],[0,255,0],[0,0,255]])
+def rgb_rgb():
+  global curr_idx
+  ret = rgb_palette[curr_idx]
+  curr_idx = (curr_idx + 1) % len(rgb_palette)
+  return np.asarray(list(ret))
+
+
 # choose your preset
-next_rgb = white_rgb
-palette = white_palette
+next_rgb = rgb_rgb#moonrise_rgb
+palette = rgb_palette#moonrise_palette
