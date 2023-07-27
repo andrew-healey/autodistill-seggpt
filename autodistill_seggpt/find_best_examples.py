@@ -25,7 +25,7 @@ def find_best_examples(
         ref_dataset:DetectionDataset,
         model_class:Type[DetectionBaseModel],
         num_examples:int=2,
-        num_trials:int=10
+        num_trials:int=5
 ):
     # create few-shot ontologies for each class.
     cls_names = [f"{i}-{cls_name}" for i,cls_name in enumerate(ref_dataset.classes)]

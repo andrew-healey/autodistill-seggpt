@@ -1,8 +1,10 @@
+from __future__ import annotations
+
 from supervision.dataset.core import DetectionDataset
 from supervision import Detections
 
-from autodistill.core import Ontology,CaptionOntology
-from autodistill.detection import DetectionOntology,DetectionBaseModel
+from autodistill.core import Ontology
+from autodistill.detection import CaptionOntology,DetectionOntology,DetectionBaseModel
 
 from dataclasses import dataclass
 from typing import Dict, List, Tuple
@@ -72,9 +74,11 @@ class FewShotOntology(Ontology):
             examples: Dict[str,List[str]]
     ) -> FewShotOntology:
         onto_tuples = []
-        for cls,examples in examples.items():
-            out_cls = ontology.promptToClass(cls)
+        for prompt,examples in examples.items():
+            if prompt not in ontology.prompts():
+                continue
+            cls = ontology.promptToClass(prompt)
             onto_tuples.append(
-                ((cls,examples),out_cls)
+                ((prompt,examples),cls)
             )
         return FewShotOntology(ref_dataset,onto_tuples)
