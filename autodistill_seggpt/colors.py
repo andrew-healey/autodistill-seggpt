@@ -43,4 +43,4 @@ palette_registry['rgb'] = (rgb_palette,rgb_rgb,"instance")
 # choose your preset
 preset = "white"
 
-next_rgb,palette,seg_type = palette_registry[preset]
+palette,next_rgb,seg_type = palette_registry[preset]

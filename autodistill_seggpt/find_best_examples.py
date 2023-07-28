@@ -7,7 +7,9 @@ from supervision.dataset.core import DetectionDataset
 from autodistill.detection import DetectionBaseModel
 from .few_shot_ontology import FewShotOntology
 
-from .metrics import iou
+from .metrics import metrics_registry
+
+metric,metric_name,metric_direction = metrics_registry["mAP"]
 
 from typing import List,Type
 
@@ -89,12 +91,14 @@ def find_best_examples(
             gt_dataset = DetectionDataset(classes=[cls],images=ref_dataset.images,annotations=gt_detections)
             pred_dataset = DetectionDataset(classes=[cls],images=ref_dataset.images,annotations=pred_detections)
 
-            score = iou(gt_dataset,pred_dataset).tolist()
+            score = metric(gt_dataset,pred_dataset).tolist()
 
             examples_scores.append((image_choices,score))
 
-            max_score = max(max_score,score)
-            combo_pbar.set_description(f"Best IoU: {round(max_score,2)}")
+            max_or_min = max if metric_direction==1 else min
+
+            max_score = max_or_min(max_score,score)
+            combo_pbar.set_description(f"Best {metric_name}: {round(max_score,2)}")
         
         my_best_examples,best_score = max(examples_scores,key=lambda x:x[1])
         best_examples[cls] = my_best_examples

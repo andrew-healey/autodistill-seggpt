@@ -1,6 +1,12 @@
 from supervision import DetectionDataset,Detections
 import numpy as np
 
+class MetricDirection:
+    LOWER_IS_BETTER = 0
+    HIGHER_IS_BETTER = 1
+
+metrics_registry = {}
+
 eps = 1e-6
 
 def iou(gt_dataset:DetectionDataset,pred_dataset:DetectionDataset)->float:
@@ -27,6 +33,7 @@ def iou(gt_dataset:DetectionDataset,pred_dataset:DetectionDataset)->float:
     
     return running_intersection/(running_union+eps)
 
+metrics_registry["iou"] = (iou,"IoU",MetricDirection.HIGHER_IS_BETTER)
 
 def get_combined_mask(img:np.ndarray,detections:Detections)->np.ndarray:
     mask = np.zeros(img.shape[:2],dtype=np.uint8)
@@ -38,3 +45,47 @@ def get_combined_mask(img:np.ndarray,detections:Detections)->np.ndarray:
     mask = np.clip(mask,0,1)
 
     return mask
+
+from pycocotools.coco import COCO
+from pycocotools.cocoeval import COCOeval
+
+import sys, os
+
+# Disable
+def blockPrint():
+    sys.stdout = open(os.devnull, 'w')
+
+# Restore
+def enablePrint():
+    sys.stdout = sys.__stdout__
+
+def mAP(gt_dataset:DetectionDataset,pred_dataset:DetectionDataset)->float:
+    assert gt_dataset.images.keys() == pred_dataset.images.keys()
+
+    gt_filename = "gt.json"
+    pred_filename = "pred.json"
+
+    # don't save images for either--mAP only depends on the masks
+    gt_dataset.as_coco(annotations_path=gt_filename)
+    pred_dataset.as_coco(annotations_path=pred_filename)
+
+    blockPrint()
+
+    gt_coco = COCO(gt_filename)
+    pred_coco = COCO(pred_filename)
+
+    for ann in pred_coco.anns.values():
+        ann["score"] = 1
+
+    coco_eval = COCOeval(gt_coco,pred_coco,"segm")
+    coco_eval.evaluate()
+    coco_eval.accumulate()
+
+    coco_eval.summarize()
+
+    enablePrint()
+
+    final_mAP = coco_eval.stats[0]
+    return final_mAP
+
+metrics_registry["mAP"] = (mAP,"mAP",MetricDirection.HIGHER_IS_BETTER)

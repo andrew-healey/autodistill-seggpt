@@ -20,6 +20,8 @@ from seggpt.seggpt_engine import run_one_image
 from seggpt.seggpt_inference import prepare_model
 from .few_shot_ontology import FewShotOntology
 
+from math import inf
+
 imagenet_mean = np.array([0.485, 0.456, 0.406])
 imagenet_std = np.array([0.229, 0.224, 0.225])
 
@@ -86,20 +88,25 @@ class SegGPT(DetectionBaseModel):
     # Convert a list of reference images into a SegGPT-friendly batch.
     def prepare_ref_imgs(self,refs:List[Tuple[np.ndarray,Detections]]):
         imgs, masks = [], []
+        min_area = inf
         for ref_img, detections in refs:
             img, mask = self.prepare_ref_img(ref_img,detections)
+
+            img_min_area = detections.area.min()
+            min_area = min(min_area,img_min_area)
+
             imgs.append(img)
             masks.append(mask)
         imgs = np.stack(imgs, axis=0)
         masks = np.stack(masks, axis=0)
-        return imgs,masks
+        return imgs,masks,min_area
 
 
     @torch.no_grad()
     def predict(self,input:Union[str,np.ndarray], confidence:int = 0.5) -> sv.Detections:
         detections = []
         for keyId,ref_imgs in enumerate(self.ontology.rich_prompts()):
-            ref_imgs,ref_masks = self.prepare_ref_imgs(ref_imgs)
+            ref_imgs,ref_masks,min_ref_area = self.prepare_ref_imgs(ref_imgs)
 
             if type(input) == str:
                 if input in self.ontology.ref_dataset.images:
@@ -145,9 +152,29 @@ class SegGPT(DetectionBaseModel):
                 to_bitmask_palette = np.asarray([[255,255,255]])
 
             bitmasks = quantized_to_bitmasks(to_bitmask_output,to_bitmask_palette)
-            detections.append(bitmasks_to_detections(bitmasks, keyId))
+            new_detections = bitmasks_to_detections(bitmasks, keyId)
+
+            if len(new_detections) > 0:
+                detections.append(new_detections)
 
         # filter <100px detections
         detections = Detections.merge(detections)
-        detections = detections[detections.area > 100]
+
+        detections = detections[detections.area > min_ref_area * 0.75]
+        if len(detections) > 0:
+            detections = detections[has_polygons(detections.mask)]
+
         return detections
+
+from supervision.dataset.utils import approximate_mask_with_polygons
+def has_polygons(masks:np.ndarray) -> np.ndarray:
+    n,h,w = masks.shape
+    
+    ret = np.zeros((n,),dtype=bool)
+    for i in range(n):
+        mask = masks[i]
+        polygons = approximate_mask_with_polygons(mask)
+        if len(polygons) > 0:
+            ret[i] = True
+
+    return ret
