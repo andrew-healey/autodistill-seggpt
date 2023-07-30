@@ -7,9 +7,11 @@ from supervision.dataset.core import DetectionDataset
 from autodistill.detection import DetectionBaseModel
 from .few_shot_ontology import FewShotOntology
 
-from .metrics import metrics_registry
+from .metrics import metrics_registry,Metric
 
-metric,metric_name,metric_direction = metrics_registry["mAP"]
+from .dataset_utils import label_dataset,shrink_dataset_to_size
+
+# metric,metric_name,metric_direction = metrics_registry["mAP"]
 
 from typing import List,Type
 
@@ -29,12 +31,18 @@ def find_best_examples(
         ref_dataset:DetectionDataset,
         model_class:Type[DetectionBaseModel],
         num_examples:int=2,
-        num_trials:int=10
+        num_trials:int=10,
+        max_test_imgs:int=15,
+        which_metric:str|Metric="mAP",
 ):
     # create few-shot ontologies for each class.
     cls_names = [f"{i}-{cls_name}" for i,cls_name in enumerate(ref_dataset.classes)]
 
     best_examples = {}
+
+    if type(which_metric) == str:
+        which_metric = metrics_registry[which_metric]
+    metric,metric_name,metric_direction = which_metric
 
     for i,cls in enumerate(cls_names):
         # get best example set for this class
@@ -52,6 +60,10 @@ def find_best_examples(
 
             if len(detections)>0:
                 positive_examples.append(img_name)
+        
+        # reduce the num of test images - keeps search time low
+        gt_dataset = DetectionDataset(classes=[cls],images=ref_dataset.images,annotations=gt_detections)
+        gt_dataset = shrink_dataset_to_size(gt_dataset,max_test_imgs)
         
         if len(positive_examples)==0:
             best_examples[cls] = []
@@ -80,16 +92,17 @@ def find_best_examples(
 
             model = model_class(ontology) # model must take only an Ontology as a parameter
 
-            pred_detections = {}
+            pred_dataset = label_dataset(gt_dataset,model)
 
-            # inference on dataset
-            for img_name in ref_dataset.images:
-                img = ref_dataset.images[img_name]
-                detections = model.predict(img)
-                pred_detections[img_name] = detections
+            # pred_detections = {}
+
+            # # inference on dataset
+            # for img_name in gt_dataset.images:
+            #     img = gt_dataset.images[img_name]
+            #     detections = model.predict(img)
+            #     pred_detections[img_name] = detections
             
-            gt_dataset = DetectionDataset(classes=[cls],images=ref_dataset.images,annotations=gt_detections)
-            pred_dataset = DetectionDataset(classes=[cls],images=ref_dataset.images,annotations=pred_detections)
+            # pred_dataset = DetectionDataset(classes=[cls],images=gt_dataset.images,annotations=pred_detections)
 
             score = metric(gt_dataset,pred_dataset).tolist()
 

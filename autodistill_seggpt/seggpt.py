@@ -9,6 +9,7 @@ from autodistill.detection import DetectionOntology,DetectionBaseModel
 from dataclasses import dataclass
 from typing import Dict, List, Tuple, Union
 
+from math import inf
 
 import torch
 from PIL import Image
@@ -18,9 +19,9 @@ from torch.nn import functional as F
 # SegGPT repo files
 from seggpt.seggpt_engine import run_one_image
 from seggpt.seggpt_inference import prepare_model
-from .few_shot_ontology import FewShotOntology
 
-from math import inf
+# SAM files
+from segment_anything import SamPredictor
 
 imagenet_mean = np.array([0.485, 0.456, 0.406])
 imagenet_std = np.array([0.229, 0.224, 0.225])
@@ -34,6 +35,8 @@ res, hres = 448, 448
 # my home-brewed SegGPT utils
 from . import colors
 from .postprocessing import quantize, quantized_to_bitmasks, bitmasks_to_detections
+from .few_shot_ontology import FewShotOntology
+from .sam_refine import refine_detections,load_sam
 
 use_colorings = True
 
@@ -46,13 +49,31 @@ def show_usage():
 
 class SegGPT(DetectionBaseModel):
 
-    ontology: FewShotOntology
-    DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    sam_predictor:Union[None,SamPredictor]=None
+    model:Union[None,torch.nn.Module]=None
 
-    def __init__(self, ontology: FewShotOntology):
+    def __init__(self,
+                 ontology: FewShotOntology,
+                 refine_detections:bool=True,
+                 sam_predictor=None,
+                 ):
+
+        self.DEVICE = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+
         self.ontology = ontology
-        self.model = prepare_model(ckpt_path, model, colors.seg_type).to(self.DEVICE)
-        # print("Model loaded.")
+        self.refine_detections = refine_detections
+
+
+        if SegGPT.model is None:
+            SegGPT.model = prepare_model(ckpt_path, model, colors.seg_type).to(self.DEVICE)
+        self.model = SegGPT.model
+
+        if sam_predictor is not None:
+            self.sam_predictor = sam_predictor
+        else:
+            if SegGPT.sam_predictor is None:
+                SegGPT.sam_predictor = load_sam()
+            self.sam_predictor = SegGPT.sam_predictor
 
     def preprocess(self, img:np.ndarray)->np.ndarray:
         img = cv2.resize(img, dsize=(res, hres))
@@ -163,6 +184,8 @@ class SegGPT(DetectionBaseModel):
         detections = detections[detections.area > min_ref_area * 0.75]
         if len(detections) > 0:
             detections = detections[has_polygons(detections.mask)]
+            if self.refine_detections:
+                detections = refine_detections(input_image,detections,self.sam_predictor)
 
         return detections
 

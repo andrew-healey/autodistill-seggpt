@@ -1,11 +1,15 @@
 from supervision import DetectionDataset,Detections
 import numpy as np
 
+from typing import Dict,Tuple,Callable
+
 class MetricDirection:
     LOWER_IS_BETTER = 0
     HIGHER_IS_BETTER = 1
 
-metrics_registry = {}
+Metric = Dict[str,Tuple[Callable,str,int]]
+
+metrics_registry:Metric = {}
 
 eps = 1e-6
 

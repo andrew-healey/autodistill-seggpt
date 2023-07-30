@@ -4,6 +4,7 @@ __pycache__/
 .conda/
 
 *.pth
+*.pt
 
 coco-viz/
 output/
@@ -18,3 +19,4 @@ Climbing-*/
 
 gt.json
 pred.json
+best_examples.json
